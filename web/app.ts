@@ -1379,7 +1379,8 @@ async function build(quiet = false) {
     if (r.ok) {
       box.replaceChildren(h("p", { class: "empty" }, r.draft
         ? `Draft preview, built with ${r.engine} in ${(r.ms / 1000).toFixed(1)} s. This is your content in a plain report layout, not Rackham formatting: add the class file to the project for the real thing.`
-        : `Built with ${r.engine} in ${(r.ms / 1000).toFixed(1)} s.`));
+        : `Built with ${r.engine} in ${(r.ms / 1000).toFixed(1)} s.`),
+        ...(r.warnings?.length ? [h("p", { class: "empty" }, `The PDF built, but ${r.warnings.length === 1 ? "one thing needs" : `${r.warnings.length} things need`} fixing:`), ...problemCards(r.warnings, "warning")] : []));
       await loadPdf(true);
     } else {
       const stale = await loadPdf(); // keep the last good PDF on screen, clearly marked as old
@@ -1388,11 +1389,8 @@ async function build(quiet = false) {
       r.errors = r.errors.filter((e: any) => !(e.fix === "percent" && likely.length));
       box.replaceChildren(
         ...(likely.length ? [h("p", { class: "empty" }, "Most likely cause, found by the LaTeX checker:"), ...issueCards(likely), h("p", { class: "empty" }, "What TeX reported:")] : []),
-        ...r.errors.flatMap((e: any) => [
-          h("button", { class: "card issue", type: "button", title: e.file ? "Show this in the text" : "", onclick: () => e.file && jump(e.file, e.line, e.col, e.near?.length ?? 0) },
-            h("span", { class: "badge error" }, "error"), h("span", { class: "msg" }, e.message, e.near ? h("span", { class: "near" }, ` near ${e.near}`) : ""), e.file && h("span", { class: "where" }, `${e.file}:${e.line}`)),
-          e.fix === "percent" && h("button", { class: "link fixit", type: "button", onclick: () => fixPercent(e.file, e.line) }, `Fix it: escape the % signs on line ${e.line} and rebuild`),
-        ]).filter(Boolean),
+        ...problemCards(r.errors, "error"),
+        ...(r.warnings?.length ? [h("p", { class: "empty" }, "TeX also warned:"), ...problemCards(r.warnings, "warning")] : []),
         r.log && h("details", { class: "log" }, h("summary", {}, "Full build log"), h("pre", {}, r.log)),
         stale && h("p", { class: "empty stale-note" }, "This build failed. The PDF below is from the last build that worked."),
       );
@@ -1403,6 +1401,15 @@ async function build(quiet = false) {
   building = false;
   if (buildAgain) { buildAgain = false; setTimeout(() => build(true), 300); }
   showTab("pdf");
+}
+
+/** Build errors and warnings as cards: what TeX said, the one-sentence fix, and a click to the line. */
+function problemCards(list: any[], badge: "error" | "warning") {
+  return list.flatMap((e: any) => [
+    h("button", { class: "card issue", type: "button", title: e.file && e.line ? "Show this in the text" : "", onclick: () => e.file && jump(e.file, e.line || 1, e.col, e.near?.length ?? 0) },
+      h("span", { class: `badge ${badge}` }, badge), h("span", { class: "msg" }, e.message, e.near ? h("span", { class: "near" }, ` near ${e.near}`) : "", e.hint ? h("span", { class: "hint" }, e.hint) : ""), e.file && h("span", { class: "where" }, e.line ? `${e.file}:${e.line}` : e.file)),
+    e.fix === "percent" && h("button", { class: "link fixit", type: "button", onclick: () => fixPercent(e.file, e.line) }, `Fix it: escape the % signs on line ${e.line} and rebuild`),
+  ]).filter(Boolean);
 }
 
 /** Turn every bare % on a line into \\% (used when one has swallowed a closing brace), then rebuild. */
@@ -1507,7 +1514,9 @@ async function toPdf() {
   const before = clean(view.state.sliceDoc(Math.max(0, pos - 500), pos)).match(/\S+/g) ?? [];
   const after = clean(view.state.sliceDoc(pos, Math.min(view.state.doc.length, pos + 500))).match(/\S+/g) ?? [];
   const words = [...before.slice(-30), ...after.slice(0, 30)];
-  const r = await (await post("/api/pdf/find", { words, center: Math.min(before.length, 30) })).json();
+  const file = panes.find((p) => p.view === view)?.file;
+  const line = view.state.doc.lineAt(pos).number;
+  const r = await (await post("/api/pdf/find", { words, center: Math.min(before.length, 30), file, line })).json();
   if (r.error) { $("pdf-pos").textContent = r.error; return; }
   showTab("pdf");
   const page = $("pdf-pages").querySelector<HTMLElement>(`[data-n="${r.page}"]`);
@@ -2457,6 +2466,9 @@ function paletteItems(): Item[] {
     { kind: "Action", label: "Browse references for this section", run: () => showTab("library") },
     { kind: "Action", label: "Rebuild the library index", run: reindex },
     { kind: "Action", label: "New file", run: newFile },
+    { kind: "Action", label: "Add a reference by DOI", hint: "looks it up at doi.org and adds it to the .bib", run: addByDoi },
+    { kind: "Action", label: "Download for Overleaf", hint: "zip of the sources and figures", run: downloadForOverleaf },
+    { kind: "Action", label: "Import an Overleaf zip", hint: "unpacks into a new folder beside this project", run: importOverleaf },
   ];
 }
 
@@ -2534,8 +2546,11 @@ let sideW = num("margin.sideW", SIDE_DEFAULT), panelShare = num("margin.panelSha
   for (const k of ["--side-w", "--panel-w", "--panel-wide"]) { remember.set(`margin.${k}`, ""); rootStyle.removeProperty(k); }
 }
 const isWide = () => mainEl.classList.contains("wide");
+// The page zoom (Cmd -/+, or "Aa") scales what getBoundingClientRect reports but not the px we set in
+// styles, so measurements are turned back into the page's own pixels before anything is placed.
+const pageZoom = () => Number(getComputedStyle(document.documentElement).zoom) || 1;
 function layout() {
-  const W = mainEl.getBoundingClientRect().width;
+  const W = mainEl.getBoundingClientRect().width / pageZoom();
   if (window.innerWidth <= 640 || !W) { mainEl.style.removeProperty("grid-template-columns"); return; }
   const sideOn = !mainEl.classList.contains("no-side"), panelOn = !mainEl.classList.contains("no-panel");
   const side = sideOn ? clamp(sideW, 150, Math.min(520, W * 0.4)) : 0;
@@ -2549,7 +2564,7 @@ function layout() {
 }
 new ResizeObserver(() => layout()).observe(mainEl);
 new MutationObserver(() => layout()).observe(mainEl, { attributes: true, attributeFilter: ["class"] });
-dragDivider($("split-side"), (x) => { sideW = clamp(x - mainEl.getBoundingClientRect().left, 150, 520); remember.set("margin.sideW", String(Math.round(sideW))); layout(); });
+dragDivider($("split-side"), (x) => { sideW = clamp((x - mainEl.getBoundingClientRect().left) / pageZoom(), 150, 520); remember.set("margin.sideW", String(Math.round(sideW))); layout(); });
 dragDivider($("split-panel"), (x) => {
   const r = mainEl.getBoundingClientRect(), share = clamp((r.right - x) / r.width, 0.12, 0.8);
   if (isWide()) { wideShare = share; remember.set("margin.wideShare", share.toFixed(3)); } else { panelShare = share; remember.set("margin.panelShare", share.toFixed(3)); }
@@ -2613,6 +2628,7 @@ const isDark = () => document.documentElement.hasAttribute("data-dark");
 function setLook(change: Partial<Look>) {
   look = { ...look, ...change };
   applyLook(look);
+  requestAnimationFrame(() => layout()); // the zoom may have changed: put the dividers back on the edges
   renderLook();
   for (const p of panes) { p.view.requestMeasure(); p.minimap.redraw(); }
   map?.redraw();
@@ -2694,6 +2710,37 @@ async function reindex() {
   await Promise.all([loadKeys(), refreshStatus(), loadProject()]);
   lastQuery = "";
   scheduleSuggest();
+}
+
+/** Paste a DOI; the reference goes into the project's .bib and its key is offered for citing. */
+async function addByDoi() {
+  const raw = prompt("DOI of the paper (for example 10.1038/nature14539, or a https://doi.org/… link)");
+  if (!raw?.trim()) return;
+  const r = await (await post("/api/doi/add", { doi: raw.trim() })).json().catch(() => ({ error: "Could not reach the server." }));
+  if (r.error) { alert(r.error); return; }
+  await loadProject();
+  if (confirm(`${r.existing ? "Already in your bibliography" : "Added to your bibliography"} as ${r.key}.\n\nInsert \\citep{${r.key}} at the cursor?`))
+    view.dispatch(view.state.replaceSelection(`\\citep{${r.key}}`));
+}
+
+/** The project as a zip that Overleaf's "Upload project" accepts. */
+function downloadForOverleaf() {
+  const a = h("a", { href: "/api/export/overleaf.zip", download: "" }) as HTMLAnchorElement;
+  document.body.append(a);
+  a.click();
+  a.remove();
+}
+
+/** Unpack a zip downloaded from Overleaf into a new folder next to this project (never over it). */
+function importOverleaf() {
+  const pick = h("input", { type: "file", accept: ".zip,application/zip" }) as HTMLInputElement;
+  pick.addEventListener("change", async () => {
+    const f = pick.files?.[0];
+    if (!f) return;
+    const r = await (await fetch(`/api/import/overleaf?name=${encodeURIComponent(f.name)}`, { method: "POST", headers: { "content-type": "application/zip" }, body: f })).json().catch(() => ({ error: "Could not reach the server." }));
+    alert(r.error ? `Import failed: ${r.error}` : `Unpacked ${r.files} files into\n${r.dir}\n\nYour current project was not changed. To work on the imported one, point "project" in your config at that folder.`);
+  });
+  pick.click();
 }
 
 async function newFile() {

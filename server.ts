@@ -1,5 +1,5 @@
 import { mkdir, readdir, rm, stat } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import page from "./web/index.html";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { PdfLibrary } from "./src/pdflib";
@@ -32,7 +32,10 @@ import { extname } from "node:path";
 import { cloudOnce, cloudStatus } from "./src/cloud";
 import { backupNow, backupStatus } from "./src/backup";
 import { findInPdf, findInSource, pageImage, pdfPages } from "./src/pdfsync";
+import { forward as syncForward, loadSynctex, projectInputs, reverse as syncReverse } from "./src/synctex";
 import { SECOND_OPINION_SYSTEM, VERIFY_SYSTEM } from "./src/prompts";
+import { importZip, zipProject } from "./src/zip";
+import { REGISTRY_HOSTS, cslToBibtex, fetchCsl, parseDoi } from "./src/doi";
 
 const cfg = await loadConfig();
 const project = await Project.open(cfg.project, join(import.meta.dir, "template"));
@@ -904,6 +907,55 @@ const server = Bun.serve({
       },
     },
 
+    /** Add a reference by DOI: CSL-JSON from doi.org, one BibTeX entry appended to the project's .bib. */
+    "/api/doi/add": {
+      POST: async (req) => {
+        const { doi: raw = "" } = (await req.json().catch(() => ({}))) as { doi?: string };
+        const doi = parseDoi(String(raw));
+        if (!doi) return json({ error: "That is not a DOI. A DOI looks like 10.1038/nature14539." }, 400);
+        const have = [...own.keys.values()].find((e) => e.doi && e.doi.toLowerCase() === doi.toLowerCase());
+        if (have) return json({ ok: true, key: have.key, existing: true });
+        try {
+          // already in the wider library: copy that entry, as citing it would (no network)
+          const inLib = [...lib.keys.values()].find((e) => e.doi && e.doi.toLowerCase() === doi.toLowerCase());
+          let key: string, bib: string;
+          if (inLib) ({ key, bib } = { key: inLib.key, bib: linkTitle(escapeHrefs(inLib.raw)) });
+          else {
+            const csl = await fetchCsl(doi, cfg.doi.followRegistry ? REGISTRY_HOSTS : []);
+            if (!csl || typeof csl !== "object" || (!csl.title && !csl.author)) return json({ error: "doi.org returned no usable citation data for that DOI." }, 502);
+            ({ key, bib } = cslToBibtex(csl, doi, hasKey));
+          }
+          const abs = project.resolve((await analyze()).bibFile);
+          if (!abs) return json({ error: "No bibliography file" }, 400);
+          const f = Bun.file(abs);
+          const before = (await f.exists()) ? await f.text() : "";
+          await snapshot(relative(cfg.project, abs), before);
+          await Bun.write(abs, before.replace(/\s*$/, "\n\n") + bib + "\n");
+          own = await buildOwn();
+          link();
+          return json({ ok: true, key, bib });
+        } catch (e) { return json({ error: (e as Error).message }, 502); }
+      },
+    },
+    /** The project as a zip Overleaf can open: sources, .bib, class/style files and figures; no build output, editor state or dotfiles. */
+    "/api/export/overleaf.zip": async () => {
+      const { zip } = await zipProject(cfg.project);
+      const name = (cfg.project.split("/").filter(Boolean).pop() ?? "thesis").replace(/[^\w.-]+/g, "-");
+      return new Response(zip, { headers: { "content-type": "application/zip", "content-disposition": `attachment; filename="${name}-overleaf.zip"` } });
+    },
+    /** An Overleaf download, unpacked into a NEW folder beside the project. The open project is never touched. */
+    "/api/import/overleaf": {
+      POST: async (req) => {
+        const name = new URL(req.url).searchParams.get("name") ?? "overleaf-import";
+        const buf = new Uint8Array(await req.arrayBuffer());
+        if (!buf.length) return json({ error: "No file was sent." }, 400);
+        try {
+          const r = await importZip(buf, cfg.project, name);
+          return json({ ok: true, dir: r.dir, files: r.files.length });
+        } catch (e) { return json({ error: (e as Error).message }, 400); }
+      },
+    },
+
     /** Check each claim in a paragraph against the library; a verdict without a source is never reported as support. */
     "/api/verify": {
       POST: async (req) => {
@@ -1267,24 +1319,45 @@ const server = Bun.serve({
       const img = f && Number.isInteger(n) && n > 0 ? await pageImage(f, n) : null;
       return img ? new Response(Bun.file(img), { headers: { "content-type": "image/png", "cache-control": "max-age=3600" } }) : new Response("no such page", { status: 404 });
     },
-    /** Source to PDF: where do the words around the cursor appear? */
+    /**
+     * Source to PDF. With SyncTeX (written by every build) the file and line say exactly which PDF lines they
+     * produced; the words around the cursor then pick the spot within them. Without it, the words alone are used.
+     */
     "/api/pdf/find": {
       POST: async (req) => {
-        const { words = [], center = 0 } = (await req.json()) as { words?: string[]; center?: number };
+        const { words = [], center = 0, file, line } = (await req.json()) as { words?: string[]; center?: number; file?: string; line?: number };
         const f = await currentPdf();
         if (!f) return json({ error: "Build the PDF first" }, 404);
-        return json((await findInPdf(f, words.slice(0, 80), center)) ?? { error: "Could not find that passage in the PDF. Rebuild if the text is new." });
+        const text = await findInPdf(f, words.slice(0, 80), center);
+        const sync = typeof file === "string" && Number.isInteger(line) && line! > 0 ? await loadSynctex(f) : null;
+        if (sync) {
+          const sizes = (await pdfPages(f)).map((p) => [p.w, p.h] as [number, number]);
+          const spots = syncForward(sync, await projectInputs(sync, cfg.project), file!, line!, sizes);
+          if (spots.length) {
+            // a source line that is a whole paragraph spans several PDF lines: the words say which one
+            const near = text && spots.some((s) => s.page === text.page && text.y >= s.y - 0.012 && text.y <= s.y + s.h + 0.012);
+            return json(near ? { ...text, via: "synctex+text" } : { ...spots[0]!, via: "synctex" });
+          }
+        }
+        return json(text ? { ...text, via: "text" } : { error: "Could not find that passage in the PDF. Rebuild if the text is new." });
       },
     },
-    /** PDF to source: which line produced the text at this spot? */
+    /** PDF to source: which line produced the text at this spot? SyncTeX when the build wrote it, else text matching. */
     "/api/pdf/locate": {
       POST: async (req) => {
         const { page = 1, x = 0.5, y = 0.5 } = (await req.json()) as { page?: number; x?: number; y?: number };
         const f = await currentPdf();
         if (!f) return json({ error: "Build the PDF first" }, 404);
+        const sync = await loadSynctex(f);
+        if (sync) {
+          const size = (await pdfPages(f))[page - 1];
+          const hit = size ? syncReverse(sync, await projectInputs(sync, cfg.project), page, x, y, [size.w, size.h]) : null;
+          if (hit && project.resolve(hit.file)) return json({ ...hit, via: "synctex" });
+        }
         const a = await analyze();
         const files = a.files.filter((x) => x.linked && x.path !== a.root).map((x) => x.path);
-        return json((await findInSource(f, cfg.project, files, page, x, y)) ?? { error: "Could not match that spot to the source (front matter, a figure, or text that has changed since the build)." });
+        const r = await findInSource(f, cfg.project, files, page, x, y);
+        return json(r ? { ...r, via: "text" } : { error: "Could not match that spot to the source (front matter, a figure, or text that has changed since the build)." });
       },
     },
 

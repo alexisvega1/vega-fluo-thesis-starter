@@ -1,5 +1,6 @@
 import { mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { diagnose, explain, refine, type Kind } from "./texerrors";
 
 export interface BuildResult {
   ok: boolean;
@@ -7,9 +8,14 @@ export interface BuildResult {
   ms: number;
   draft: boolean; // true when built with a stand-in class because the dissertation class is missing
   pdf: string | null; // path of the PDF relative to the project
-  errors: { file: string; line: number; message: string; fix?: "percent"; col?: number; near?: string }[];
+  errors: Problem[];
+  /** Problems TeX only warns about but that leave the PDF wrong: undefined citations/references, oversize floats. */
+  warnings: Problem[];
   log: string;
 }
+
+/** A build problem: where it is, what TeX said, and (for the common ones) a one-sentence fix. */
+export interface Problem { file: string; line: number; message: string; fix?: "percent"; col?: number; near?: string; kind?: Kind; hint?: string }
 
 const STANDARD = new Set(["article", "report", "book", "memoir", "scrartcl", "scrreprt", "scrbook"]);
 const PREVIEW = "margin-preview.tex";
@@ -57,7 +63,7 @@ ${body}
 /** Compile the dissertation to .build/<name>.pdf with whichever TeX engine is installed. */
 export async function buildPdf(projectDir: string, root: string | null): Promise<BuildResult> {
   const t0 = performance.now();
-  const none = (message: string): BuildResult => ({ ok: false, engine: null, ms: 0, draft: false, pdf: null, errors: [{ file: "", line: 0, message }], log: "" });
+  const none = (message: string): BuildResult => ({ ok: false, engine: null, ms: 0, draft: false, pdf: null, errors: [{ file: "", line: 0, message }], warnings: [], log: "" });
   if (!root) return none("No main.tex to build.");
   const engine = Bun.which("tectonic") ? "tectonic" : Bun.which("latexmk") ? "latexmk" : null;
   if (!engine) return none("No TeX engine is installed on this machine. Install one (for example: brew install tectonic) and build again.");
@@ -71,40 +77,46 @@ export async function buildPdf(projectDir: string, root: string | null): Promise
   await mkdir(join(projectDir, ".build"), { recursive: true });
   const cmd =
     engine === "tectonic"
-      ? ["tectonic", "-X", "compile", target, "--outdir", ".build", "--keep-logs", "--keep-intermediates"]
-      : ["latexmk", "-pdf", "-interaction=nonstopmode", "-halt-on-error", "-file-line-error", "-outdir=.build", target];
+      ? ["tectonic", "-X", "compile", target, "--outdir", ".build", "--keep-logs", "--keep-intermediates", "--synctex"]
+      : ["latexmk", "-pdf", "-interaction=nonstopmode", "-halt-on-error", "-file-line-error", "-synctex=1", "-outdir=.build", target];
   const proc = Bun.spawn(cmd, { cwd: projectDir, stdout: "pipe", stderr: "pipe" });
   const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
   const code = await proc.exited;
   if (draft) await rm(join(projectDir, PREVIEW), { force: true });
 
   const log = `${out}\n${err}`;
-  // TeX reports a runaway argument where the file ends, not where it began; name the real line first
-  const errors: BuildResult["errors"] = code === 0 ? [] : await percentTraps(projectDir);
-  for (const line of log.split("\n")) {
-    if (line.startsWith("warning:") || line.startsWith("note:")) continue; // only real errors belong in the error list
-    // TeX may name the file with or without ".tex" (chapters/chapter_02:27: ...)
-    const m = /^(?:error: )?((?:\.\/)?[\w.\/-]+?(?:\.(?:tex|bib|cls|sty))?):(\d+): (.+)$/.exec(line);
-    if (m) errors.push({ file: m[1]!.replace(/^\.\//, "") === PREVIEW ? root : m[1]!.replace(/^\.\//, ""), line: m[1]!.includes(PREVIEW) ? 0 : Number(m[2]), message: m[3]! });
-    else if (/^(! |error: )/.test(line)) errors.push({ file: "", line: 0, message: line.replace(/^(! |error: )/, "") });
-  }
   const pdf = `.build/${target.replace(/\.tex$/, ".pdf")}`;
   const ok = code === 0 && !!(await stat(join(projectDir, pdf)).catch(() => null));
+  const full = await Bun.file(join(projectDir, ".build", `${target.replace(/\.tex$/, "")}.log`)).text().catch(() => "");
+  const found = diagnose(code === 0 ? "" : log, full, code !== 0);
+  // TeX reports a runaway argument where the file ends, not where it began; name the real line first
+  const errors: Problem[] = code === 0 ? [] : await percentTraps(projectDir);
+  const fromPreview = (p: { file: string; line: number }) => { if (p.file.replace(/\.tex$/, "") === PREVIEW.replace(/\.tex$/, "")) { p.file = root; p.line = 0; } };
+  for (const e of found.errors) { fromPreview(e); errors.push({ file: e.file, line: e.line, message: e.message, kind: e.kind, hint: e.hint, ...(e.snippet ? { snippet: e.snippet } : {}) } as Problem); }
+  const warnings: Problem[] = found.warnings.map((w) => { fromPreview(w); return { file: w.file, line: w.line, message: w.message, kind: w.kind, hint: w.hint, key: w.key } as Problem; });
   // TeX names files without ".tex" (chapters/chapter_02); point at the real file
-  for (const e of errors) if (e.file && !/\.\w+$/.test(e.file) && (await stat(join(projectDir, `${e.file}.tex`)).catch(() => null))) e.file += ".tex";
+  for (const e of [...errors, ...warnings]) if (e.file && !/\.\w+$/.test(e.file) && (await stat(join(projectDir, `${e.file}.tex`)).catch(() => null))) e.file += ".tex";
+  // the line TeX names is often not the one to change (runaway arguments, citations reported without a file)
+  if (errors.some((e) => e.kind === "runaway") || warnings.length) {
+    const files: { path: string; text: string }[] = [];
+    for await (const f of new Bun.Glob("**/*.tex").scan({ cwd: projectDir })) if (!f.startsWith(".") && f !== PREVIEW) files.push({ path: f, text: await Bun.file(join(projectDir, f)).text() });
+    refine(errors as any, files);
+    refine(warnings as any, files);
+  }
+  for (const p of [...errors, ...warnings]) { delete (p as any).snippet; delete (p as any).key; }
   // the log shows where on the line TeX stopped: "l.27 <text up to the problem>" then the rest on the next line
   if (!ok) {
-    const full = await Bun.file(join(projectDir, ".build", `${target.replace(/\.tex$/, "")}.log`)).text().catch(() => "");
     for (const m of full.matchAll(/^l\.(\d+) (.*)$/gm)) {
       const line = Number(m[1]), before = m[2]!.replace(/^\.\.\./, "");
-      const e = errors.find((x) => x.line === line && x.col === undefined && x.file);
+      const e = errors.find((x) => x.line === line && x.col === undefined && x.file && x.kind !== "runaway");
       if (!e) continue;
       const text = (await Bun.file(join(projectDir, e.file)).text().catch(() => "")).split("\n")[line - 1] ?? "";
       const at = text.indexOf(before) >= 0 ? text.indexOf(before) + before.length : text.lastIndexOf(before.slice(-30)) >= 0 ? text.lastIndexOf(before.slice(-30)) + Math.min(30, before.length) : -1;
       if (at >= 0) { e.col = at; e.near = /(\\[a-zA-Z@]+|\S{1,12})\s*$/.exec(before)?.[1] ?? ""; }
+      if (e.kind === "undefined-command" && e.near) e.hint = explain(e.message, e.near).hint;
     }
   }
-  return { ok, engine, ms: Math.round(performance.now() - t0), draft, pdf: ok ? pdf : null, errors: errors.slice(0, 40), log: log.slice(-8000) };
+  return { ok, engine, ms: Math.round(performance.now() - t0), draft, pdf: ok ? pdf : null, errors: errors.slice(0, 40), warnings: warnings.slice(0, 60), log: log.slice(-8000) };
 }
 
 /** Lines where a bare % sits inside an open {argument}: TeX reads it as a comment and never sees the closing brace. */
@@ -120,8 +132,8 @@ export function findPercentTraps(text: string): number[] {
   return hits;
 }
 
-async function percentTraps(projectDir: string): Promise<BuildResult["errors"]> {
-  const out: BuildResult["errors"] = [];
+async function percentTraps(projectDir: string): Promise<Problem[]> {
+  const out: Problem[] = [];
   for await (const file of new Bun.Glob("**/*.tex").scan({ cwd: projectDir })) {
     if (file.startsWith(".")) continue;
     for (const line of findPercentTraps(await Bun.file(join(projectDir, file)).text()))

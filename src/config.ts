@@ -15,6 +15,8 @@ export interface Config {
   judges?: { id: string; label?: string; provider: "anthropic" | "openai"; model: string; effort?: "low" | "medium" | "high" | "xhigh" | "max" }[];
   knowledgeMap?: string; // folder holding citation_graph.json and map.json
   user: { name: string }; // whose name goes on suggestions and comments made on this machine
+  /** Add-by-DOI contacts doi.org, then follows its one redirect to api.crossref.org or api.datacite.org (https). followRegistry: false keeps it to doi.org alone. */
+  doi: { followRegistry: boolean };
 }
 
 /** Load config.json (or the file given by --config). Relative paths resolve against the config file. */
@@ -42,6 +44,7 @@ export async function loadConfig(argv = process.argv): Promise<Config> {
     cloud: raw.cloud,
     judges: raw.judges,
     knowledgeMap: raw.knowledgeMap ? abs(raw.knowledgeMap) : undefined,
+    doi: { followRegistry: (raw as any).doi?.followRegistry !== false },
     user: { name: raw.user?.name?.trim() || (await gitName()) || "Me" },
   };
 }

@@ -225,7 +225,7 @@ button.card:hover { border-color: var(--accent); }
 .issue { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: baseline; }
 .issue .where { grid-column: 2; font: 11px var(--mono); color: var(--muted); }
 .issue .msg { overflow-wrap: anywhere; }
-.badge.error, .badge.warn { background: var(--warn-soft); color: var(--warn); }
+.badge.error, .badge.warn, .badge.warning { background: var(--warn-soft); color: var(--warn); }
 .badge.info { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1px var(--rule); }
 pre.log { font: 11px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; max-height: 40vh; overflow: auto; color: var(--muted); }
 
@@ -697,6 +697,7 @@ body.pdf-dark .pdfpage img, body.pdf-dark .paperframe { filter: invert(0.9) hue-
 .cm-errline { background: color-mix(in srgb, var(--warn) 14%, transparent); }
 .cm-errspot { background: color-mix(in srgb, var(--warn) 38%, transparent); outline: 2px solid var(--warn); border-radius: 3px; }
 .issue .near { font-family: var(--mono); font-size: 12px; color: var(--warn); }
+.issue .hint { display: block; margin-top: 3px; font-size: 12.5px; color: var(--muted, inherit); opacity: 0.9; }
 
 /* PDF viewer: page strip on the left, pages on the right */
 #tab-pdf { grid-template-rows: auto auto minmax(0, 1fr); }
