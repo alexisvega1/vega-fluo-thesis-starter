@@ -1,0 +1,12 @@
+{
+  "port": 4317,
+  "project": "./starter/thesis",
+  "sources": ["./starter/library"],
+  "llm": { "baseUrl": "http://127.0.0.1:11434/v1", "model": "qwen3" },
+  "dictation": {
+    "model": "~/.cache/whisper/ggml-large-v3-turbo-q5_0.bin",
+    "vocabulary": "./starter/vocabulary.txt",
+    "language": "en"
+  },
+  "user": { "name": "Me" }
+}

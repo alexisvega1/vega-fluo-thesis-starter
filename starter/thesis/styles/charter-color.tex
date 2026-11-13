@@ -1,0 +1,38 @@
+% Thesis style: Charter with coloured links (modelled on a 2025 U-M CSE dissertation).
+% - Charter text face (XCharter), maths left in Computer Modern
+% - citations green, cross-references (chapters, sections, figures, equations) blue, URLs blue
+% - "Chapter 1" in title case instead of "CHAPTER 1"
+% Rackham asks for black body text; coloured links are a judgement call, so the Rackham style is
+% the safe choice for the deposited PDF. Switch styles in Vega Fluo (Cmd-K, "Thesis style").
+\usepackage{XCharter}
+\definecolor{vfCiteGreen}{RGB}{16,152,80}
+\definecolor{vfLinkBlue}{RGB}{16,104,192}
+\AtBeginDocument{\hypersetup{colorlinks=true, citecolor=vfCiteGreen, linkcolor=vfLinkBlue, urlcolor=vfLinkBlue}}
+\makeatletter
+\renewcommand{\@chapapp}{Chapter}
+\makeatother
+% Front-matter headings and their contents entries in title case ("Table of Contents", "Acknowledgments")
+% instead of the class's capitals. Each patch is skipped quietly if the class has changed.
+\usepackage{etoolbox}
+\makeatletter
+\patchcmd{\insertfront}{\uppercase{\an{#3}}}{#3}{}{}
+\patchcmd{\insertfront}{\uppercase{\an{#3}}}{#3}{}{}
+\patchcmd{\insertfront}{\uppercase{#3}}{#3}{}{}
+\patchcmd{\l@frontchapter}{\uppercase{#1}}{#1}{}{}
+\patchcmd{\l@backchapter}{\uppercase{#1}}{#1}{}{}
+\patchcmd{\tableofcontents}{TABLE OF CONTENTS}{Table of Contents}{}{}
+\patchcmd{\listoffigures}{LIST OF FIGURES}{List of Figures}{}{}
+\patchcmd{\listoftables}{LIST OF TABLES}{List of Tables}{}{}
+\patchcmd{\listofprograms}{LIST OF PROGRAMS}{List of Programs}{}{}
+\patchcmd{\listofappendices}{LIST OF APPENDICES}{List of Appendices}{}{}
+\patchcmd{\listofacronyms}{LIST OF ACRONYMS}{List of Acronyms}{}{}
+\@ifundefined{listofabbreviations}{}{\patchcmd{\listofabbreviations}{LIST OF ABBREVIATIONS}{List of Abbreviations}{}{}}
+\@ifundefined{listofsymbols}{}{\patchcmd{\listofsymbols}{LIST OF SYMBOLS}{List of Symbols}{}{}}
+\patchcmd{\appendix}{APPENDIX}{Appendix}{}{}
+\@ifundefined{abstractpage}{}{\patchcmd{\abstractpage}{ABSTRACT}{Abstract}{}{}}
+\renewcommand*{\bibname}{\centerline{\large\bf Bibliography}}
+% the class writes a capitalised "CHAPTER" label above the chapters in the contents; drop it there only
+\def\vf@dropone#1{}
+\pretocmd{\tableofcontents}{\begingroup\let\uppercase\vf@dropone}{}{}
+\apptocmd{\tableofcontents}{\endgroup}{}{}
+\makeatother

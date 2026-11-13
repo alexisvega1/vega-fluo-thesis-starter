@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Vega Fluo</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #06080f; color: #cfe; font: 12px -apple-system, system-ui, sans-serif; }
+    body { display: grid; grid-template-rows: auto 1fr; }
+    header { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-bottom: 1px solid #1c2230; }
+    header img { width: 14px; height: 14px; }
+    header span { flex: 1; opacity: .8; }
+    a { color: #5fd3e8; text-decoration: none; }
+    iframe { width: 100%; height: 100%; border: 0; background: #06080f; }
+    .down { padding: 16px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <header><img src="icon-16.png" alt=""><span>Vega Fluo</span><a id="tab" href="#" title="Open in a full tab">↗ Full tab</a><a href="options.html" target="_blank" title="Change the address">⚙</a></header>
+  <iframe id="app" allow="microphone; clipboard-read; clipboard-write; fullscreen" title="Vega Fluo"></iframe>
+  <script src="config.js"></script>
+  <script src="panel.js"></script>
+</body>
+</html>

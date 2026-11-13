@@ -1,0 +1,84 @@
+%%% Packages included in thesis-umich class
+%\RequirePackage[margin=1in,footskip=8pt,headsep=0.4cm,headheight=\baselineskip]{geometry}
+%\RequirePackage{amsmath}
+%\RequirePackage{amsfonts}
+%\RequirePackage{amssymb}
+%\RequirePackage{graphicx}
+%\RequirePackage{subcaption}
+%\RequirePackage{times}
+%\RequirePackage{natbib}
+%\RequirePackage{verbatim}
+%\RequirePackage{upquote}
+%\RequirePackage{textcomp}
+%\RequirePackage{setspace}
+%\RequirePackage{ifthen}
+%\RequirePackage{soul}
+%\RequirePackage{float}
+%\RequirePackage{acronym}
+%\RequirePackage{makeidx}
+%\RequirePackage{fancyhdr}
+%\RequirePackage{multicol}
+
+% Include your packages here by including a \usepackage{<package_name>} command.
+\usepackage{blindtext} % Example package which populates the ever-popular lorem ipsum text.
+\usepackage{listings}
+% ---- Code listings (added 2026-11-12) -------------------------------------------------------
+% Style from the Overleaf code-listing example.
+\usepackage{xcolor}
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+\lstdefinestyle{mystyle}{
+  backgroundcolor=\color{backcolour},   commentstyle=\color{codegreen},
+  keywordstyle=\color{magenta},
+  numberstyle=\tiny\color{codegray},
+  stringstyle=\color{codepurple},
+  basicstyle=\ttfamily\footnotesize,
+  breakatwhitespace=false,
+  breaklines=true,
+  captionpos=b,
+  keepspaces=true,
+  numbers=left,
+  numbersep=5pt,
+  showspaces=false,
+  showstringspaces=false,
+  showtabs=false,
+  tabsize=2
+}
+\lstset{style=mystyle}
+
+% \codefile[language]{path}{caption}{label}
+% A code file printed in full. Unlike the class's "program" float it can run across pages,
+% and it still gets a number and a line in the List of Programs.
+\newcommand{\codefile}[4][]{%
+  \refstepcounter{program}\label{#4}%
+  \addcontentsline{lop}{program}{\protect\numberline{\theprogram}#3}%
+  \lstinputlisting[language={#1},title={Program \theprogram: #3}]{#2}}
+
+% --- Vega Fluo: citations link to the chapter's own reference list (generated in .margin/chapter-refs) ---
+\RequirePackage{currfile}
+\makeatletter
+\InputIfFileExists{.margin/chapter-refs/_index.tex}{}{}
+\AtBeginDocument{\@ifundefined{hyper@natlinkstart}{}{%
+  \let\vf@natlinkstart\hyper@natlinkstart
+  \let\vf@natlinkbreak\hyper@natlinkbreak
+  \def\hyper@natlinkstart#1{\ifcsname vf@list@\currfilebase\endcsname\Hy@backout{#1}\hyper@linkstart{cite}{cite.\currfilebase.#1}\def\hyper@nat@current{#1}\else\vf@natlinkstart{#1}\fi}%
+  \def\hyper@natlinkbreak#1#2{\ifcsname vf@list@\currfilebase\endcsname\hyper@linkend#1\hyper@linkstart{cite}{cite.\currfilebase.#2}\else\vf@natlinkbreak{#1}{#2}\fi}}}
+\setcitestyle{authoryear,round}
+\makeatother
+% --- end Vega Fluo ---
+
+% --- Vega Fluo: a placeholder box for a figure that is not final yet: \figureplaceholder[height]{what goes here} ---
+\providecommand{\figureplaceholder}[2][2.4in]{\fbox{\parbox[c][#1][c]{0.85\linewidth}{\centering\sffamily\small Figure placeholder\\[0.6ex]\footnotesize #2}}}
+% --- end Vega Fluo ---
+
+% --- Vega Fluo: figure versions. \figureversion{text} uses each figure file as named; \figureversion{clean}
+% uses figures/<name>_clean.pdf instead wherever that file exists (statistics then go in the legend and Results).
+\makeatletter
+\newif\ifvf@cleanfigs
+\newcommand{\figureversion}[1]{\def\vf@tmp{#1}\def\vf@clean{clean}\ifx\vf@tmp\vf@clean\vf@cleanfigstrue\else\vf@cleanfigsfalse\fi}
+\def\vf@trypdf#1.pdf#2\@nil{\IfFileExists{#1_clean.pdf}{\def\vf@file{#1_clean.pdf}}{}}
+\newcommand{\vf@includegraphics}[2][]{\def\vf@file{#2}\ifvf@cleanfigs\vf@trypdf#2.pdf\@nil\fi\vf@origgraphics[#1]{\vf@file}}
+\AtBeginDocument{\let\vf@origgraphics\includegraphics\renewcommand{\includegraphics}{\@ifstar{\vf@origgraphics*}{\vf@includegraphics}}}
+\makeatother

@@ -1,0 +1,14 @@
+# Words dictation should expect: one per line, most important first. The first ~45 go to Whisper.
+# Add your field's terms, method names, and the surnames you cite most — misheard names are the commonest error.
+hypothesis
+statistically significant
+two-way ANOVA
+post hoc
+Benjamini-Hochberg
+confidence interval
+effect size
+supplementary figure
+et al.
+dissertation committee
+Rackham
+LaTeX

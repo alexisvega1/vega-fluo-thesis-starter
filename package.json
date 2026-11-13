@@ -1,0 +1,32 @@
+{
+  "name": "vega-fluo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun server.ts",
+    "dev": "bun --hot server.ts",
+    "test": "bun test",
+    "passes": "bun passes.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "@codemirror/autocomplete": "^6.18.0",
+    "@codemirror/commands": "^6.8.0",
+    "@codemirror/lang-markdown": "^6.3.0",
+    "@codemirror/language": "^6.11.0",
+    "@codemirror/legacy-modes": "^6.5.5",
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/view": "^6.36.0",
+    "d3-force": "^3.0.1",
+    "d3-selection": "^3.0.1",
+    "d3-zoom": "^3.0.1",
+    "dictionary-en": "^4.0.0",
+    "dictionary-es": "^4.0.0",
+    "nspell": "^2.1.5",
+    "web-push": "3.6.7"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

@@ -1,0 +1,11 @@
+node_modules
+.build
+.cache
+.margin/
+config.json
+google-client.json
+tools/personal-markers.txt
+.env
+.env.*
+.DS_Store
+starter/thesis/thesis-umich.cls

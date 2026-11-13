@@ -1,0 +1,65 @@
+% A blank dissertation for Vega Fluo, on the University of Michigan (Rackham) thesis class.
+% Structure after the U-M Dissertation LaTeX Template (2023) by John Meluso and Shreyas Kousik.
+% Replace every [BRACKETED] placeholder. thesis-umich.cls must sit next to this file (see ../README.md).
+% backref: list after each bibliography entry the pages that cite it
+\documentclass[thesis,backref]{thesis-umich}
+\input{packages}
+% Thesis style: rackham (the Rackham template as is) or charter-color (Charter text, coloured links).
+% Switch in Vega Fluo with Cmd-K -> "Thesis style", or change the name below.
+\input{styles/charter-color}
+% Figures: text (each figure as named) or clean (uses name_clean.pdf when it exists, e.g. stats moved to legends).
+% Switch in Vega Fluo with Cmd-K -> "Figures", or change the word below.
+\figureversion{text}
+
+%--- Title page ---------------------------------------------------------------
+\title{[Your Dissertation Title]}
+\author{[Your Full Name]}
+\department{[Your Program]}
+% \year=2028  % the year you deposit; without this line the current year is used
+\email{[uniqname@umich.edu]}
+\orcid{[0000-0000-0000-0000]}
+
+%--- Front matter (the [7] picks Rackham's preferred style) ---------------------
+\dedication[7]{\input{front_materials/dedication}}
+\acknowledgments[7]{\input{front_materials/acknowledgments}}
+\preface[7]{\input{front_materials/preface}}
+
+\committee{ %
+  Professor [Committee Member One], [Department] \\
+  Professor [Committee Member Two], [Department] \\
+  Professor [Committee Member Three], [Department]
+}
+% The chair is entered separately for formatting reasons.
+\chair{Professor [Chair Name]}
+%\cochair{Professor [Co-chair One] \& Professor [Co-chair Two]}
+
+% Lists to show or hide (change "show" to "hide")
+\showlistoftables
+\hidelistofprograms
+\showlistofappendices
+\showlistofacronyms
+
+% Acronyms: one \acro{SHORT}{Long form} per line
+\acronyms{
+  \acro{TLA}{Three Letter Acronym}
+  \acro{[ABBR]}{[What it stands for]}
+}
+
+\abstract{\input{front_materials/abstract}}
+
+\usepackage[utf8]{inputenc}
+\usepackage{tabularx}
+
+\begin{document}
+\input{chapters/chapter_01} % Introduction
+\input{chapters/chapter_02} % Data chapter 1 (written as a paper)
+\input{chapters/chapter_03} % Data chapter 2
+\input{chapters/chapter_04} % Data chapter 3
+\input{chapters/chapter_05} % General Discussion
+% Move a chapter to the appendices by putting its \input line below \appendix.
+\appendix
+\input{appendices/appendix_01}
+
+\bibliographystyle{plainnat}
+\bibliography{references.bib}
+\end{document}

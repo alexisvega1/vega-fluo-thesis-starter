@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Vega Fluo",
+  "version": "1.0.0",
+  "description": "Open Vega Fluo, your dissertation editor, in Chrome's side panel next to any page.",
+  "icons": { "16": "icon-16.png", "32": "icon-32.png", "48": "icon-48.png", "128": "icon-128.png" },
+  "action": { "default_title": "Vega Fluo (Alt+Shift+V)", "default_icon": { "16": "icon-16.png", "32": "icon-32.png" } },
+  "side_panel": { "default_path": "panel.html" },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["sidePanel", "storage"],
+  "options_page": "options.html",
+  "commands": { "_execute_action": { "suggested_key": { "default": "Alt+Shift+V" }, "description": "Open Vega Fluo" } }
+}
